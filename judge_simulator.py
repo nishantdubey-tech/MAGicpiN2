@@ -641,6 +641,11 @@ class JudgeSimulator:
             "auto_reply_hell": self._auto_reply,
             "intent_transition": self._intent,
             "hostile": self._hostile,
+            "hinglish_stop": self._hinglish_stop,
+            "scheduling": self._scheduling,
+            "pricing": self._pricing,
+            "info_request": self._info_request,
+            "out_of_scope": self._out_of_scope,
             "all": self._all,
             "full_evaluation": self._full,
         }
@@ -814,10 +819,126 @@ class JudgeSimulator:
 
         return True
 
+    def _hinglish_stop(self) -> bool:
+        print_section("HINGLISH STOP HANDLING")
+        data, err, _ = self.client.healthz()
+        if err:
+            print_fail(f"Bot unreachable: {err}")
+            return False
+        mid = list(self.dataset.merchants.keys())[0] if self.dataset.merchants else "m_test"
+        msg = "band karo bhai mat bhejo ab"
+        print_info(f"Merchant (Hinglish STOP): \"{msg}\"")
+        data, err, _ = self.client.reply("conv_hinglish_stop", mid, msg, 2)
+        if err:
+            print_fail(f"Error: {err}")
+            return False
+        action = data.get("action", "?")
+        print_info(f"Bot action: {action}")
+        if action == "end":
+            print_success("Bot correctly detected Hindi/Hinglish STOP and ENDED conversation")
+            return True
+        else:
+            print_fail(f"Bot failed to end on Hinglish STOP (got {action})")
+            return False
+
+    def _scheduling(self) -> bool:
+        print_section("SCHEDULING INTENT")
+        data, err, _ = self.client.healthz()
+        if err:
+            print_fail(f"Bot unreachable: {err}")
+            return False
+        mid = list(self.dataset.merchants.keys())[0] if self.dataset.merchants else "m_test"
+        msg = "Can we connect next Monday instead?"
+        print_info(f"Merchant: \"{msg}\"")
+        data, err, _ = self.client.reply("conv_sched", mid, msg, 2)
+        if err:
+            print_fail(f"Error: {err}")
+            return False
+        action = data.get("action", "?")
+        body = data.get("body", "")
+        print_info(f"Bot action: {action}, body: \"{body[:80]}...\"")
+        if action in ("send", "wait"):
+            print_success("Bot correctly acknowledged scheduling request without being pushy")
+            return True
+        return False
+
+    def _pricing(self) -> bool:
+        print_section("PRICING INQUIRY")
+        data, err, _ = self.client.healthz()
+        if err:
+            print_fail(f"Bot unreachable: {err}")
+            return False
+        mid = list(self.dataset.merchants.keys())[0] if self.dataset.merchants else "m_test"
+        msg = "Kitna charges lagega iska? Is there any fee?"
+        print_info(f"Merchant: \"{msg}\"")
+        data, err, _ = self.client.reply("conv_price", mid, msg, 2)
+        if err:
+            print_fail(f"Error: {err}")
+            return False
+        action = data.get("action", "?")
+        body = data.get("body", "")
+        print_info(f"Bot action: {action}, body: \"{body[:80]}...\"")
+        if action == "send" and any(w in body.lower() for w in ["cost", "charge", "free", "existing", "investment", "offer"]):
+            print_success("Bot clearly addressed pricing with grounded explanation")
+            return True
+        return False
+
+    def _info_request(self) -> bool:
+        print_section("INFO REQUEST INTENT")
+        data, err, _ = self.client.healthz()
+        if err:
+            print_fail(f"Bot unreachable: {err}")
+            return False
+        mid = list(self.dataset.merchants.keys())[0] if self.dataset.merchants else "m_test"
+        msg = "Tell me more details about how this works"
+        print_info(f"Merchant: \"{msg}\"")
+        data, err, _ = self.client.reply("conv_info", mid, msg, 2)
+        if err:
+            print_fail(f"Error: {err}")
+            return False
+        action = data.get("action", "?")
+        body = data.get("body", "")
+        cta = data.get("cta", "none")
+        print_info(f"Bot action: {action}, cta: {cta}")
+        if action == "send" and cta == "binary_yes_no" and len(body) > 20:
+            print_success("Bot provided helpful explanation and closed with concrete CTA")
+            return True
+        return False
+
+    def _out_of_scope(self) -> bool:
+        print_section("OUT-OF-SCOPE INTENT")
+        data, err, _ = self.client.healthz()
+        if err:
+            print_fail(f"Bot unreachable: {err}")
+            return False
+        mid = list(self.dataset.merchants.keys())[0] if self.dataset.merchants else "m_test"
+        msg = "Can you file my GST tax return for this month?"
+        print_info(f"Merchant: \"{msg}\"")
+        data, err, _ = self.client.reply("conv_oos", mid, msg, 2)
+        if err:
+            print_fail(f"Error: {err}")
+            return False
+        action = data.get("action", "?")
+        body = data.get("body", "")
+        print_info(f"Bot action: {action}")
+        if action == "send" and any(w in body.lower() for w in ["gst", "tax", "outside", "growth"]):
+            print_success("Bot politely declined out-of-scope task and redirected to growth")
+            return True
+        return False
+
     def _all(self) -> bool:
         results = []
-        for name, fn in [("warmup", self._warmup), ("auto_reply", self._auto_reply),
-                         ("intent", self._intent), ("hostile", self._hostile)]:
+        for name, fn in [
+            ("warmup", self._warmup),
+            ("auto_reply", self._auto_reply),
+            ("intent", self._intent),
+            ("hostile", self._hostile),
+            ("hinglish_stop", self._hinglish_stop),
+            ("scheduling", self._scheduling),
+            ("pricing", self._pricing),
+            ("info_request", self._info_request),
+            ("out_of_scope", self._out_of_scope),
+        ]:
             try:
                 results.append((name, fn()))
             except Exception as e:
