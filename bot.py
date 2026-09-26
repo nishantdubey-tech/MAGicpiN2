@@ -53,7 +53,8 @@ STOP_PHRASES = {
 COMMITMENT_PHRASES = {
     "ok lets do it", "okay lets do it", "let's do it", "lets do it", "go ahead",
     "yes do it", "yes please", "proceed", "do it", "sounds good", "i want to join",
-    "i want this", "book it", "confirm it", "activate it",
+    "i want this", "book it", "confirm it", "activate it", "ok let's do it",
+    "okay let's do it", "whats next", "what's next", "lets go", "let's go",
 }
 
 # Explicit soft-decline phrases: distinct from STOP (recipient isn't asking to be
@@ -72,7 +73,7 @@ def _ctx(scope: str, cid: str) -> Optional[dict]:
 def _store(scope: str, cid: str, version: int, payload: dict) -> tuple[bool, Optional[int]]:
     key = (scope, cid)
     cur = contexts.get(key)
-    if cur and cur["version"] >= version:
+    if cur and cur["version"] > version:
         return False, cur["version"]
     contexts[key] = {"version": version, "payload": payload}
     return True, None
