@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re, time, hashlib
+import re, time, hashlib, os, json, urllib.request, urllib.error
 
 from datetime import datetime
 from typing import Any, Optional
@@ -18,6 +18,52 @@ conversations: dict[str, dict[str, Any]] = {}
 seen_suppression: set[str] = set()
 last_sent_body: dict[str, str] = {}
 ended_conversations: set[str] = set()
+
+def _load_env():
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+
+_load_env()
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+def _call_openai(system_prompt: str, user_prompt: str, fallback: str) -> str:
+    if not OPENAI_API_KEY:
+        return fallback
+    try:
+        data = json.dumps({
+            "model": OPENAI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 120
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            res_json = json.loads(resp.read().decode())
+            text = res_json["choices"][0]["message"]["content"].strip()
+            if text.startswith('"') and text.endswith('"'):
+                text = text[1:-1].strip()
+            return text if text else fallback
+    except Exception:
+        # Seamlessly fallback to deterministic template on any API error or quota limit
+        return fallback
 
 CATEGORY_TONES = {
     "dentists": "peer-clinical",
@@ -632,8 +678,16 @@ def compose(category: dict, merchant: dict, trigger: dict, customer: Optional[di
             "rationale": reason,
         }
 
+    tone = category.get("voice", {}).get("tone", "operator-practical") if category else "operator-practical"
+    system_prompt = (
+        f"You are Vera, magicpin's Merchant Growth AI. Voice tone: {tone}. "
+        "Strict rules: Never invent facts/prices. Never mention internal jargon. Exactly one clear next step or question. Keep under 280 characters."
+    )
+    user_prompt = f"Format this merchant growth message cleanly while preserving all specific numbers, offers, and names: \"{body.strip()}\""
+    final_body = _call_openai(system_prompt, user_prompt, fallback=body.strip())
+
     return {
-        "body": body.strip(),
+        "body": final_body,
         "cta": cta,
         "send_as": send_as,
         "suppression_key": key,
@@ -915,10 +969,10 @@ async def metadata():
     return {
         "team_name": "Nishant Dubey",
         "team_members": ["Nishant Dubey"],
-        "model": "deterministic-rule-engine",
-        "approach": "context-grounded deterministic router + category-aware composer + conversation state",
+        "model": f"OpenAI ({OPENAI_MODEL}) + deterministic-engine" if OPENAI_API_KEY else "deterministic-rule-engine",
+        "approach": "OpenAI LLM + context-grounded deterministic router + category-aware composer + conversation state",
         "contact_email": "nishantdubey.tech@gmail.com",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "submitted_at": datetime.utcnow().isoformat() + "Z",
     }
 
