@@ -5,6 +5,7 @@ Start the bot first with: uvicorn bot:app --port 8080
 """
 import json
 import sys
+import time
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
@@ -35,6 +36,11 @@ def post(path: str, body: dict) -> dict:
 print("\n" + "=" * 60)
 print("     MAGICPIN VERA AI BOT — TEST SUITE & TEST PAIRS")
 print("=" * 60 + "\n")
+
+try:
+    post("/v1/teardown", {})
+except Exception:
+    pass
 
 # 1. Health & Metadata
 print("--- 1. Health & Metadata ---")
@@ -188,7 +194,7 @@ test_pairs = [
 ]
 
 for idx, tp in enumerate(test_pairs, start=1):
-    conv_id = f"test_pair_conv_{idx}"
+    conv_id = f"tp_conv_{int(time.time()*1000)}_{idx}"
     res = post("/v1/reply", {
         "conversation_id": conv_id,
         "merchant_id": "m_test_cafe",
